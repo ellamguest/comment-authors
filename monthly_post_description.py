@@ -45,6 +45,11 @@ def removed(df):
     
     return removed
 
+def nonremoved(df):
+    nonremoved = df[df['selftext']!='[removed]']
+    
+    return nonremoved
+
 title_counts = df.title.value_counts()
 repeat_titles = df[df['title'].isin(
         title_counts[title_counts!=1].index)]
