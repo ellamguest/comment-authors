@@ -177,8 +177,6 @@ comparison_histogram(rem_read, nonrem_read, 'ASL',
 
 ### trying to replace tokenisation w/ textacy lemmatisation
 
-test = df.head()
-
 for title in test['title']:
     # content = 'Certain races are, as a result of genetic factors, at an intellectual disadvantage.'
     doc = textacy.Doc(title.lower())
@@ -191,11 +189,24 @@ for title in test['title']:
 
 
 df = basic_df()
-read_df = get_readability_measures(test['title'])
+read_df = get_readability_measures(df['title'])
         
-dfs = read_df['word_counts']
-merged_df = dfs[0]
-for df in dfs[1:]:
-    merged_df.update(df)
+count_dicts = read_df['word_counts']
+merged_df = count_dicts[0].copy()
+n = 1
+for count_dict in count_dicts[1:5]:
+    for k, v in count_dict.items():
+        if k in merged_df.keys():
+            merged_df[k] += v
+        else:
+            merged_df[k] = v
+    print(n)
+    n += 1
 
 len(merged_df)
+
+word_freqs = pd.DataFrame(merged_df, index=['freq']).T
+word_freqs.sort_values('freq').tail()
+
+dtm = textacy.vsm.doc_term_matrix(read_df['word_counts'])
+pdtm = pd.SparseDataFrame(dtm[0], columns=list(dtm[1].values()))
