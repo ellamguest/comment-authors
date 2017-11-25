@@ -81,7 +81,6 @@ train_cols = topic_matrix.columns[:-1]
 logit = sm.GLM(topic_matrix['log_num_comments'], topic_matrix[train_cols])
 result = logit.fit()
 
-
 .reset_index(drop=True)
 has_body = has_body.reset_index(drop=True)
 x = has_body[has_body['num_comments']>0]
@@ -120,3 +119,5 @@ plt.xticks(())
 plt.yticks(())
 
 plt.show()
+
+

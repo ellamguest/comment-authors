@@ -27,7 +27,7 @@ nlp = spacy.load('en')
 def basic_df():
     df = pd.read_pickle('cmv_17_06_posts.pkl')
     df['time'] = pd.to_datetime(df['created_utc'], unit='s')
-    df['delta'] = df['author_flair_text'].apply(lambda x: re.sub("[^0-9]", "", str(x)))
+    df['delta'] = pd.to_numeric(df['author_flair_text'].apply(lambda x: re.sub("[^0-9]", "", str(x)))).fillna(0)
     df['body_length'] = df['selftext'].apply(lambda x: len(x))
     df['title_length'] = df['title'].apply(lambda x: len(x))
     df = df.replace('', np.nan, regex=True)
@@ -135,27 +135,18 @@ def freq_word_count(word_set, rev_freq):
 
 
 ### comparing removed posts
-def removed(df):
-    removed = df[df['selftext']=='[removed]']
+def removed(df, text):
+    '''text is a column in df'''
+    removed = df[df[text]=='[removed]']
     
     return removed
 
-def nonremoved(df):
-    nonremoved = df[df['selftext']!='[removed]']
+def nonremoved(df, text):
+    '''text is a column in df'''
+    nonremoved = df[df[text]!='[removed]']
     
     return nonremoved
 
-removed_posts = removed(df)
-nonremoved_posts = nonremoved(df)
-
-rem_read = get_readability_measures(removed_posts['title'])
-nonrem_read = get_readability_measures(nonremoved_posts['title'])
-
-fig = plt.figure()
-ax1 = fig.add_subplot(111)
-
-ax1.hist(rem_read['n_syllables'], normed=True, label='removed')
-ax1.hist(nonrem_read['n_syllables'], normed=True, label='not removed')
 
 def comparison_histogram(df1, df2, variable, labels):
     '''variable is a string of a column in both dfs
@@ -168,12 +159,17 @@ def comparison_histogram(df1, df2, variable, labels):
     plt.tight_layout()
     plt.show()
 
-comparison_histogram(rem_read, nonrem_read, 'ASL',
+
+df = basic_df()
+read_df = get_readability_measures(df['title'])
+
+rem_read = removed(read_df, 'text')
+nonrem_read = nonremoved(read_df, 'text')
+
+deltas = df[df['delta']>1]
+
+comparison_histogram(removed(deltas, 'selftext'), nonremoved(deltas, 'selftext'), 'delta',
                      ['removed', 'not removed'])
-
-
-
-
 
 ### trying to replace tokenisation w/ textacy lemmatisation
 
@@ -185,12 +181,7 @@ for title in test['title']:
     
     print(n_grams)
     print()
-    
-
-
-df = basic_df()
-read_df = get_readability_measures(df['title'])
-        
+            
 count_dicts = read_df['word_counts']
 merged_df = count_dicts[0].copy()
 n = 1
