@@ -10,7 +10,12 @@ import pandas as pd
 from tqdm import tqdm
 from google.cloud import bigquery
 from concurrent.futures import TimeoutError
+import os
+import numpy as np
+import matplotlib.pyplot as plt
 
+
+## DATA COLLECTION
 
 PROJECT = 'reddit-network-184710'
 CREDENTIALS = 'reddit-network-774059619c28.json'
@@ -92,6 +97,7 @@ def split_list(List, parts):
 def separate_queries(df, parts=4):
     '''full list of authors exceeds query character length so divide into sublists'''
     authors = list(set(df['author']))
+    authors.sort()
 
     sublists = split_list(authors, parts)
 
@@ -146,19 +152,13 @@ def COMPLETE_DATASET():
     
     df.to_pickle('COMPLETE-COMMENT-DATASET-17-06.pkl')
     
+
 '''
 REFERENCE SAMPLE DATASET
 - take 1000 random subreddits (excluding defaults)
 - take 1000 random authors from each subreddit
 - get all comments by those authors across all subreddits
 - do in-subreddit author ratios for each subreddit
-
-TEST SET
-- take 10 random subreddits (excluding defaults)
-- take 100 authors from each subreddit
-- compile list of all authors
-- collect all comments by those authors
-- do ratios
 '''
 
 def get_random_subreddits(n=1000):
@@ -176,38 +176,6 @@ def get_random_subreddits(n=1000):
     
     return df
 
-def get_random_authors(subreddits, n=1000):
-    '''
-    N.B. skipping all authors w/ 'bot' in name and known bots w/o 'bot in name
-    '''
-    subnames = ''
-    for name in subreddits:
-        subnames = subnames+ "'" + name + "' ,"
-    
-    subnames= subnames[:-2]
-    
-    skip = "'[deleted]','AutoModerator', 'TotesMessenger', 'protanoa_is_gay', 'morejpeg_auto'"
-        
-    query = """SELECT DISTINCT subreddit, author
-                FROM `fh-bigquery.reddit_comments.2017_06`
-                WHERE subreddit IN ({}) AND
-                    LOWER(author) NOT LIKE 'bot' AND
-                     author NOT IN ({})
-                LIMIT {}""".format(subnames, skip, n)
- 
-    j = run_job(query)
-    output = unpack_results(j)
-    output.to_pickle('{}-random-authors.pkl'.format(n))
-    return output
-
-df = get_random_subreddits()
-random_subs = pd.read_pickle('1000-random-subs.pkl') #1000 random subreddit entries, 612 unique subreddits
-subreddits = random_subs['subreddit'].unique()
-random_authors = get_random_authors(subreddits)
-
-x = pd.read_pickle('all-authors-random-subs.pkl')
-
-random_authors = get_random_authors(subreddits[:5], n=50)
 
 def get_random_authors(subreddit, n=1000):
     '''
@@ -228,22 +196,121 @@ def get_random_authors(subreddit, n=1000):
     return df
 
 def get_many_authors():
-    subreddits = random_subs['subreddit'].unique()
+    df = pd.read_pickle('1000-random-subs.pkl')
+    subreddits = df['subreddit'].unique()
     dfs = []
     for sub in subreddits:
         print(sub)
         df = get_random_authors(sub, n=1000)
         dfs.append(df)
-    full = pd.concat(dfs)
-    full.to_pickle('full-sample.pkl')
+    authors = pd.concat(dfs)
+    authors.to_pickle('full-sample.pkl')
 
-full = pd.read_pickle('full-sample.pkl')
-names = full['author'].unique()
+def get_all_comments():
+    '''
+    of the set of 1000 random authors per 1000 random subreddits
+    '''
+    full = pd.read_pickle('full-sample.pkl')
+    qs = separate_queries(full, parts=100)
+
+    for n in range(len(qs)):
+        print(n)
+        query = qs[n]
+        j = run_job(query)
+        df = unpack_results(j)
+        df.to_pickle('/Users/emg/Programming/GitHub/comment-authors/data/full-random-sample-part-{}.pkl'.format(n))
+
+
+
+## DATA COMPILATION AND ANALYSIS
+
+def compile_full_random_sample():
+    dfs = []
+    print('Compiling full comment set of random sample')
+    for filename in os.listdir('/Users/emg/Programming/GitHub/comment-authors/data'):
+        df = pd.read_pickle('/Users/emg/Programming/GitHub/comment-authors/data/{}'.format(filename))
+        dfs.append(df)
+    
+    return pd.concat(dfs)
+
+def defaults():
+    defaults= 'Art+AskReddit+DIY+Documentaries+EarthPorn+Futurology+GetMotivated+IAmA+InternetIsBeautiful+Jokes+LifeProTips+Music+OldSchoolCool+Showerthoughts+UpliftingNews+announcements+askscience+aww+blog+books+creepy+dataisbeautiful+explainlikeimfive+food+funny+gadgets+gaming+gifs+history+listentothis+mildlyinteresting+movies+news+nosleep+nottheonion+personalfinance+philosophy+photoshopbattles+pics+science+space+sports+television+tifu+todayilearned+videos+worldnews'
+    return defaults.split('+')
+    
+def counts_plot():
+    fig, ax = plt.subplots()
+    ax.scatter(np.log(sub_counts), np.log(sub_author_counts))
+    ax.set_xlabel('Log of Num Comments in subreddit')
+    ax.set_ylabel('Log of Num Comments in subreddit')
+    ax.set_title('Number of comments by number of authors for subreddits')
+
+def botnames(df):
+    names = set(df.index)
+    bots = []
+    for name in names:
+        if 'bot' in name.lower():
+            bots.append(name)
+    return bots
+
+complete = compile_full_random_sample()
+sub_counts = complete['subreddit'].value_counts()
+sub_author_counts = complete.drop_duplicates(['subreddit','author'])['subreddit'].value_counts()
+author_counts = complete['author'].value_counts()
+
+pairs = pd.read_pickle('full-sample.pkl')
+key_subs = pairs['subreddit'].unique()
+names = pairs[pairs['subreddit']==key_subs[0]]['author']
+
+local = complete[complete['author'].isin(names)]
+
+
+test = complete.groupby(['subreddit','author']).count()['created_utc']
+test2 = complete.groupby(['author','subreddit']).count()['created_utc']
+
+complete['count']=1
+m = complete.pivot_table(index='subreddit',columns='author',values='count', aggfunc='sum')
+
+
+repeats = author_counts[author_counts>1]
+repeats.shape
+
+author_counts[author_counts>10].shape
+
+main = pd.read_pickle('full-sample.pkl')
+for n in range(0,100):
+    df = pd.read_pickle('/Users/emg/Programming/GitHub/comment-authors/data/full-random-sample-part-{}.pkl'.format(n))
+    grouped = df.groupby(['author','subreddit']).count()['created_utc']
+    grouped_df = pd.DataFrame(grouped).reset_index()
+    print('Updating main with subset', n) # this is the slow bit, try dict instead?
+    main = (main.merge(grouped_df, how='outer', on = ['author','subreddit'])
+                .rename(columns={'created_utc':n}))
+main.head()
+
+main.to_pickle('author_counts.pkl')
+
+ns = []
+for n in range(0,100):
+    ns.append(n)
+
+counts = main[ns].sum(axis=1)
+counts = main[ns].sum(axis=1)
+df = main[['subreddit','author']]
+df['count'] = counts
+
+df.to_pickle('author_subreddit_comment_counts.pkl')
+
+df = pd.read_pickle('author_subreddit_comment_counts.pkl')
 
 
 
 
-qs = separate_queries(full, parts=100)
+'''
+new_bots = ['ImagesOfNetwork','autotldr','MTGCardFetcher','Roboragi','Smartstocks',
+            'TwitterToStreamable', 'MovieGuide', 'SteamKiwi','Mentioned_Videos']
 
+confirmed_not_bots = 'grrrrreat, Pawpatrolbatman, smarvin6689, False1512 piyushsharma301' # many posting in r/counts
 
+now_suspended = ['DemonBurritoCat','strawberrygirl1000']
 
+page_not_found['Not_Just_You']
+'''
