@@ -7,16 +7,13 @@ Spyder Editor
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def remove_authors(df, remove):
-    return df[~df['author'].isin(remove)].copy()
-
 def botless_comments():
-    dataset = pd.read_pickle('all-cocomments-17-06.pkl')
+    df = pd.read_pickle('all-cocomments-17-06.pkl')
     remove = ['[deleted]','AutoModerator', 'WikiTextBot','teddyRbot', 'TotesMessenger',
               'Capital_R_and_U_Bot', 'DeltaBot', 'video_descriptionbot', '_youtubot_',
               'gifv-bot','RemindMeBot','timezone_bot','protanoa_is_gay','alotabot',
               'morejpeg_auto']
-    return remove_authors(dataset, remove)
+    return df[~df['author'].isin(remove)].copy()
 
     # possible bots but not sure yet...
     questionables = ['JlmmyButler', 'Not_Just_You', 'dejavubot', 'PapiDimmi']
@@ -102,46 +99,21 @@ def ranked_subsets():
     
     shared_ranks = pd.merge(td_rank,cmv_rank,'inner', left_index=True, right_index=True)
 
-def author_ratios(df, subreddit):
-    totalcount = df.author.value_counts()
-    incount = df[df['subreddit']==subreddit].author.value_counts()
-    
-    ratio_df = pd.DataFrame({'total':totalcount,
-                            'incount':incount,
-                            'ratio':incount/totalcount})
-    return ratio_df.sort_values(['ratio', 'total'], ascending=False)
+def get_insubreddt_count(df, sub):
+    insub = df[df['subreddit']==sub].set_index('author')
+    insub['outcount'] = df[df['subreddit']!=sub]['author'].value_counts(dropna=False)
+    insub['outcount']= insub['outcount'].fillna(0)
+    insub['total'] = insub['count']+insub['outcount']
+    insub['ratio']= insub['count']/insub['total']
+    return insub
 
-df = botless_comments()
-cmv_df, td_df = make_subsets(df)
-cmv_ratios = author_ratios(cmv_df, 'changemyview')
-td_ratios = author_ratios(td_df,'The_Donald')
+df = pd.read_pickle('all-cocomments-17-06.pkl')
+df = df[df['author']!='[deleted]'] # keeping bots for now
+cmv_df = pd.read_pickle('cmv_df.pkl')
+td_df = pd.read_pickle('td_df.pkl')
+cmv_ratios = get_insubreddt_count(cmv_df, 'changemyview')
+td_ratios =get_insubreddt_count(td_df,'The_Donald')
 
-cmv_ratios.ratio.hist()
-td_ratios.ratio.hist()
-
-cmv_ratios[cmv_ratios['ratio']==1]
-cmv_ratios[cmv_ratios['ratio']==1]['total'].value_counts()
-
-cmv_ratios[cmv_ratios['ratio']<1].ratio.hist()
-s = td_ratios[td_ratios['ratio']<1].ratio.plot(type='hist',title='TD Author Ratios Histogram')
-
-td_ratios.plot(x='ratio',type='hist',title='TD Author Ratios Histogram')
-
-cmv_ratios.plot('incount','total', kind='scatter')
-
-ax = td_ratios.plot('incount','total', kind='scatter')
-
-def comment_plot(df):
-    fig, ax = plt.subplots()
-    ax.scatter(df['incount'],df['total']-df['incount'], s=5)
-    #ax.plot(ax.get_xlim(), ax.get_xlim(), ls="--", c=".3")
-    ax.set_title('in- vs out-subreddit comments by authors')
-    ax.set_ylabel('Number of out-subreddit comments')
-    ax.set_xlabel('Number of in-subreddit comments')
-    #ax.set_ylim(ymin=0.5)
-    #ax.set_xlim(xmin=0.1)
-
-comment_plot(td_ratios)
 
 def ratio_histogram(df):
     fig, ax = plt.subplots()

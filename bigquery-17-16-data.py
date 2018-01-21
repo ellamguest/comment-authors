@@ -13,6 +13,7 @@ from concurrent.futures import TimeoutError
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import random
 
 
 ## DATA COLLECTION
@@ -233,76 +234,145 @@ def compile_full_random_sample():
     
     return pd.concat(dfs)
 
-def defaults():
-    defaults= 'Art+AskReddit+DIY+Documentaries+EarthPorn+Futurology+GetMotivated+IAmA+InternetIsBeautiful+Jokes+LifeProTips+Music+OldSchoolCool+Showerthoughts+UpliftingNews+announcements+askscience+aww+blog+books+creepy+dataisbeautiful+explainlikeimfive+food+funny+gadgets+gaming+gifs+history+listentothis+mildlyinteresting+movies+news+nosleep+nottheonion+personalfinance+philosophy+photoshopbattles+pics+science+space+sports+television+tifu+todayilearned+videos+worldnews'
-    return defaults.split('+')
+def get_author_subreddit_counts():
+    main = pd.read_pickle('full-sample.pkl')
+    for n in range(0,100):
+        df = pd.read_pickle('/Users/emg/Programming/GitHub/comment-authors/data/full-random-sample-part-{}.pkl'.format(n))
+        grouped = df.groupby(['author','subreddit']).count()['created_utc']
+        grouped_df = pd.DataFrame(grouped).reset_index()
+        print('Updating main with subset', n) # this is the slow bit, try dict instead?
+        main = (main.merge(grouped_df, how='outer', on = ['author','subreddit'])
+                    .rename(columns={'created_utc':n}))
+    #main.to_pickle('author_counts.pkl')
+
+    ns = []
+    for n in range(0,100):
+        ns.append(n)
     
-def counts_plot():
+    counts = main[ns].sum(axis=1)
+    counts = main[ns].sum(axis=1)
+    df = main[['subreddit','author']]
+    df['count'] = counts
+    
+    #df.to_pickle('author_subreddit_comment_counts.pkl')
+
+def get_insubreddt_count(df, sub):
+    insub = df[df['subreddit']==sub].groupby('author').count()['count']
+    outsub = df[df['subreddit']!=sub].groupby('author').count()['count']
+    result = pd.DataFrame({'count':insub,'outcount':outsub,'subreddit':sub}, index=insub.index)
+    result.fillna(value=0, inplace=True)
+    result['total'] =  result['count'] + result['outcount']
+    result['ratio'] = result['count'] / result['total']
+    
+    return result
+
+
+def save_subreddit_author_counts():
+    df = pd.read_pickle('author_subreddit_comment_counts.pkl')
+    pairs = pd.read_pickle('full-sample.pkl')
+    subs = pairs['subreddit'].unique()
+    subs.sort()
+    
+    for sub in subs:
+        print('Subsetting for', sub)
+        authors = pairs[pairs['subreddit']==sub]['author']
+        subset = df[df['author'].isin(authors)] # would using groupby be faster?
+        insub = get_insubreddt_count(subset, sub)
+        
+        insub.to_pickle('/Users/emg/Programming/GitHub/comment-authors/data/incounts/{}-author-counts.pkl'.format(sub))
+    
+def compile_subreddit_author_counts():
+    dfs = []
+    fs = os.listdir('/Users/emg/Programming/GitHub/comment-authors/data/incounts')
+    for filename in fs:
+        df = pd.read_pickle('/Users/emg/Programming/GitHub/comment-authors/data/incounts/{}'.format(filename))
+        dfs.append(df)
+    
+    all_incounts = pd.concat(dfs)
+    all_incounts.to_pickle('all_insub_ratios.pkl')
+
+def scatter(x,y):
     fig, ax = plt.subplots()
-    ax.scatter(np.log(sub_counts), np.log(sub_author_counts))
-    ax.set_xlabel('Log of Num Comments in subreddit')
-    ax.set_ylabel('Log of Num Comments in subreddit')
-    ax.set_title('Number of comments by number of authors for subreddits')
+    ax.scatter(x,y)
 
-def botnames(df):
-    names = set(df.index)
-    bots = []
-    for name in names:
-        if 'bot' in name.lower():
-            bots.append(name)
-    return bots
-
-complete = compile_full_random_sample()
-sub_counts = complete['subreddit'].value_counts()
-sub_author_counts = complete.drop_duplicates(['subreddit','author'])['subreddit'].value_counts()
-author_counts = complete['author'].value_counts()
-
-pairs = pd.read_pickle('full-sample.pkl')
-key_subs = pairs['subreddit'].unique()
-names = pairs[pairs['subreddit']==key_subs[0]]['author']
-
-local = complete[complete['author'].isin(names)]
+def comparision_scatter(x,y):
+    xarray, yarray = desc_stats[x], desc_stats[y]
+    cmvx, cmvy = cmv_desc[x], cmv_desc[y]
+    tdx, tdy = td_desc[x], td_desc[y]
+    
+    fig, ax = plt.subplots()
+    ax.scatter(xarray,yarray,marker='.',alpha=0.5)
+    ax.plot(cmvx, cmvy, 'go')
+    ax.plot(tdx, tdy, 'ro')
+    
+    ax.set_xlabel(x)
+    ax.set_ylabel(y)
+    ax.set_title('{} by {} of in-subreddit author ratios'.format(x,y))
+    
+def drop_values(df, attribute,minimum):
+    return df[df[attribute]>minimum]
 
 
-test = complete.groupby(['subreddit','author']).count()['created_utc']
-test2 = complete.groupby(['author','subreddit']).count()['created_utc']
-
-complete['count']=1
-m = complete.pivot_table(index='subreddit',columns='author',values='count', aggfunc='sum')
+df = pd.read_pickle('all_insub_ratios.pkl')
+log_ratio = lambda df: np.log(df['count']+1)/np.log(df['total']+1)
+df['log_ratio'] = log_ratio(df)
 
 
-repeats = author_counts[author_counts>1]
-repeats.shape
+# COMPARING TO REFERNCE SUBREDDITS
+cmv_df = pd.read_pickle('cmv_df.pkl')
+cmv_ratios = get_insubreddt_count(cmv_df, 'changemyview')
 
-author_counts[author_counts>10].shape
+td_df = pd.read_pickle('td_df.pkl')
+td_ratios =get_insubreddt_count(td_df,'The_Donald')
 
-main = pd.read_pickle('full-sample.pkl')
-for n in range(0,100):
-    df = pd.read_pickle('/Users/emg/Programming/GitHub/comment-authors/data/full-random-sample-part-{}.pkl'.format(n))
-    grouped = df.groupby(['author','subreddit']).count()['created_utc']
-    grouped_df = pd.DataFrame(grouped).reset_index()
-    print('Updating main with subset', n) # this is the slow bit, try dict instead?
-    main = (main.merge(grouped_df, how='outer', on = ['author','subreddit'])
-                .rename(columns={'created_utc':n}))
-main.head()
+for dataset in [df, cmv_ratios, td_ratios]:
+    dataset = drop_values(dataset, 'total', 5)
+desc_stats = df.groupby('subreddit')['ratio'].describe()
+cmv_desc = cmv_ratios['ratio'].describe()
+td_desc = td_ratios['ratio'].describe()
 
-main.to_pickle('author_counts.pkl')
-
-ns = []
-for n in range(0,100):
-    ns.append(n)
-
-counts = main[ns].sum(axis=1)
-counts = main[ns].sum(axis=1)
-df = main[['subreddit','author']]
-df['count'] = counts
-
-df.to_pickle('author_subreddit_comment_counts.pkl')
-
-df = pd.read_pickle('author_subreddit_comment_counts.pkl')
+comparision_scatter('mean','std')
 
 
 
+
+x, y =  df.groupby('subreddit').mean()['ratio'], np.log(df.groupby('subreddit').mean()['count'])
+scatter(x,y)
+
+
+
+
+cmv_ratios['ratio'].std()
+td_ratios['ratio'].mean()
+
+cmv_ratios['ratio'].describe()
+td_ratios['ratio'].describe()
+
+def ratio_histogram(df, subname):
+    fig, ax = plt.subplots()
+    ax.hist(df['ratio'])
+    ax.set_title('{} Author In-subreddit Ratios Histogram'.format(subname))
+    plt.show()
+
+ratio_histogram(td_ratios, 'The_Donald')
+ratio_histogram(cmv_ratios, 'changemyview')
+
+def random_ratio_histograms(n=5):
+    df = pd.read_pickle('all_insub_ratios.pkl')
+    pairs = pd.read_pickle('full-sample.pkl')
+    for sub in all_incounts['subreddit'].sample(n):
+        authors = pairs[pairs['subreddit']==sub]['author']
+        subset = df[df['author'].isin(authors)] # would using groupby be faster?
+        ratio_df = get_insubreddt_count(subset, sub)
+        
+        ratio_histogram(ratio_df, sub)
+
+random_ratio_histograms()
+
+
+ 
+
+    
 
 '''
 new_bots = ['ImagesOfNetwork','autotldr','MTGCardFetcher','Roboragi','Smartstocks',
@@ -314,3 +384,7 @@ now_suspended = ['DemonBurritoCat','strawberrygirl1000']
 
 page_not_found['Not_Just_You']
 '''
+
+cmv_df
+
+
