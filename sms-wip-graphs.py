@@ -76,7 +76,7 @@ t_stats = td_df.groupby('author')['subreddit'].count().describe()
 
 
 
-def comparision_scatter(sample_array, cmv_stats, td_stats, x,y):
+def log_comparision_scatter(sample_array, cmv_stats, td_stats, x,y):
     xarray, yarray = np.log(sample_array[x]), np.log(sample_array[y])
     cmvx, cmvy = np.log(cmv_stats[x]), np.log(cmv_stats[y])
     tdx, tdy = np.log(td_stats[x]), np.log(td_stats[y])
@@ -92,6 +92,23 @@ def comparision_scatter(sample_array, cmv_stats, td_stats, x,y):
     ax.set_title('Alter-Subreddit Count Stats by Subreddit')
     
     plt.tight_layout()
+
+def comparision_scatter(sample_array, cmv_stats, td_stats, x,y):
+    xarray, yarray = sample_array[x], sample_array[y]
+    cmvx, cmvy = cmv_stats[x], cmv_stats[y]
+    tdx, tdy = td_stats[x], td_stats[y]
+    
+    fig, ax = plt.subplots()
+    ax.scatter(xarray,yarray,marker='.',alpha=0.5, label='random subs')
+    ax.plot(cmvx, cmvy, 'go', label = 'changemyview')
+    ax.plot(tdx, tdy, 'ro', label = 'The_Donald')
+    ax.legend()
+    
+    #ax.set_xlabel('Std Dev Author Alter-Subreddit Count')
+    #ax.set_ylabel('Mean of Author Alter-Subreddit Count')
+    #ax.set_title('Alter-Subreddit Count Stats by Subreddit')
+    
+    plt.tight_layout()
     
 comparision_scatter(subset, c_stats, t_stats, 'std','mean')
 
@@ -99,7 +116,9 @@ comparision_scatter(subset, c_stats, t_stats, 'std','mean')
 ### 3.2 RATIO OF IN-SUBREDDIT VS OUT-SUBREDDIT AUTHOR ENGAGEMENT
 pairs['insub_ratio'] = pairs['author_subreddit_comment_count'] / pairs['author_comment_count']
 insub_ratios = pairs.groupby('subreddit')['insub_ratio'].describe()
-in_subset = insub_ratios[insub_ratios['count']>980] 
+#in_subset = insub_ratios[insub_ratios['count']>980] 
+
+comparision_scatter(insub_ratios, c_ratio, t_ratio, '50%','mean')
 
 
 def get_insubreddit_count(df, sub):
@@ -107,7 +126,21 @@ def get_insubreddit_count(df, sub):
     total = df.groupby('author')['subreddit'].count()
     return insub/total
 
-c_ratio = get_insubreddit_count(cmv_df, 'changemyview')
-t_ratio = get_insubreddit_count(td_df, 'The_Donald')
 
+
+c_ratio = get_insubreddit_count(cmv_df, 'changemyview').describe()
+t_ratio = get_insubreddit_count(td_df, 'The_Donald').describe()
+
+
+df = pd.read_pickle('all_insub_ratios.pkl')
+df2 = botless_comments(df)
+insub_ratios = df2.groupby('subreddit')['ratio'].describe()
+
+
+fig, ax = plt.subplots()
+ax.hist(insub_ratios['50%'])
+ax.set_title('Histogram of Median Insubbredit Ratios by Ego-Subreddit')
+ax.set_xlabel('Median In-subreddit Ratio by Authors')
+ax.set_ylabel('Count of Ego-Subreddits')
+plt.tight_layout()
 
