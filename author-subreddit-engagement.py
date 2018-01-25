@@ -7,20 +7,24 @@ Spyder Editor
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def botless_comments():
-    df = pd.read_pickle('all-cocomments-17-06.pkl')
+def botless_comments(df, conservative=False):
+    '''conservative=True if removing author names containing "bot" '''
+    if conservative == True:
+        botnames = []
+        for name in set(df['author']):
+            if 'bot' in name.lower():
+                botnames.append(name)
+        df = df[~df['author'].isin(botnames)].copy()
+    
     remove = ['[deleted]','AutoModerator', 'WikiTextBot','teddyRbot', 'TotesMessenger',
               'Capital_R_and_U_Bot', 'DeltaBot', 'video_descriptionbot', '_youtubot_',
               'gifv-bot','RemindMeBot','timezone_bot','protanoa_is_gay','alotabot',
-              'morejpeg_auto']
+              'morejpeg_auto', 'ImagesOfNetwork', 'imguralbumbot', 'autotldr','MTGCardFetcher',
+              'sneakpeekbot', 'youtubefactsbot', 'Shark_Bot', 'SnapshillBot', 'DemonBurritoCat',
+              'HelperBot_', 'cheer_up_bot','anti-gif-bot']
     return df[~df['author'].isin(remove)].copy()
-
-    # possible bots but not sure yet...
-    questionables = ['JlmmyButler', 'Not_Just_You', 'dejavubot', 'PapiDimmi']
-    maybes = []
-    for name in set(df['author']):
-        if 'bot' in name.lower():
-            maybes.append(name)
+    
+    
 
 def make_subsets(df):
     cmv_authors = df[df['subreddit']=='changemyview']['author'].unique()
